@@ -2,9 +2,17 @@
 This is a brief PyTorch implementation of EfficientNetV2[[paper](https://arxiv.org/abs/2104.00298)], providing with experiments on ImageNet and CIFAR-10/100.  
 The official TensorFlow implementation is at [google/automl/efficientnetv2](https://github.com/google/automl/tree/master/efficientnetv2).  
 
+## Run
+### 1. Train
+```bash
+python train.py efficientnetv2-b0 cifar10
+```
+### 2. Test
+```bash
+python eval.py efficientnetv2-b0 cifar10
+```
 
-
-## Acknowleadgement
+## Acknowledgement
 With sincerely appreciation to [google/automl/efficientnetv2](https://github.com/google/automl/tree/master/efficientnetv2) and [lukemelas/EfficientNet-PyTorch](https://github.com/lukemelas/EfficientNet-PyTorch)!
 ## Cites
 ```

@@ -5,7 +5,7 @@
 
 import re
 import collections
-
+import torch
 
 
 ################################################################################
@@ -179,7 +179,33 @@ def get_efficientnetv2_params(model_name, num_classes):
 
     return blocks_args, global_params
 
+class AverageMeter(object):
+    """Computes and stores the average and current value
+       Imported from https://github.com/pytorch/examples/blob/master/imagenet/main.py#L247-L262
+    """
+    def __init__(self):
+        self.reset()
 
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+
+def accuracy(preds, targets):
+    with torch.no_grad():
+        batch_size = targets.size(0)
+        pred_index = torch.argmax(preds, dim=1)
+        correct = pred_index.eq(targets.view(1, -1))
+        acc1 = correct.sum().float().mul_(100.0 / batch_size)
+    return acc1
 
 if __name__ == '__main__':
     b, g = get_efficientnetv2_params("efficientnetv2-s", 10)
