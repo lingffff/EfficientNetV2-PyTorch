@@ -20,11 +20,11 @@ def get_dataloader(dataset: str, img_size, args, train=True):
             normalization
         ])
         if dataset == 'cifar10':
-            train_set = torchvision.datasets.CIFAR10(ROOT, train=True, transform=train_transforms, download=True)
-            val_set = torchvision.datasets.CIFAR10(ROOT, train=False, transform=val_transforms, download=True)
+            train_set = torchvision.datasets.CIFAR10(ROOT, train=True, transform=train_transforms)
+            val_set = torchvision.datasets.CIFAR10(ROOT, train=False, transform=val_transforms)
         elif dataset == 'cifar100':
-            train_set = torchvision.datasets.CIFAR100(ROOT, train=True, transform=train_transforms, download=True)
-            val_set = torchvision.datasets.CIFAR100(ROOT, train=False, transform=val_transforms, download=True)
+            train_set = torchvision.datasets.CIFAR100(ROOT, train=True, transform=train_transforms)
+            val_set = torchvision.datasets.CIFAR100(ROOT, train=False, transform=val_transforms)
  
     
     elif dataset == 'imagenet':
@@ -52,10 +52,15 @@ def get_dataloader(dataset: str, img_size, args, train=True):
     else:
         raise NotImplementedError
     
-    train_loader = torch.utils.data.DataLoader(train_set, args.batch_size, shuffle=True, num_workers=args.workers)
-    val_loader = torch.utils.data.DataLoader(val_set, args.batch_size, shuffle=False, num_workers=args.workers)
+    train_sampler = None
+    if hasattr(args, 'ddp'):
+        if args.ddp:
+            train_sampler = torch.utils.data.distributed.DistributedSampler(train_set)
+
+    train_loader = torch.utils.data.DataLoader(train_set, args.batch_size, shuffle=(train_sampler is None), num_workers=args.workers, pin_memory=True, sampler=train_sampler)
+    val_loader = torch.utils.data.DataLoader(val_set, args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
     if train:
-        return train_loader, val_loader
+        return train_loader, val_loader, train_sampler
     else:
         return val_loader
 

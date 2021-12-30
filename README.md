@@ -7,9 +7,13 @@ The official TensorFlow implementation is at [google/automl/efficientnetv2](http
 ```bash
 python train.py efficientnetv2-b0 cifar10
 ```
+if using Distributed Data Parallel Training:  
+```bash
+python train.py efficientnetv2-b0 cifar10 --ddp
+```
 ### 2. Test
 ```bash
-python eval.py efficientnetv2-b0 cifar10
+python eval.py efficientnetv2-b0 cifar10 --ckpt weights/best.pth.tar
 ```
 
 ## Acknowledgement
