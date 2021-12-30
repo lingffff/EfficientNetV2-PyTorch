@@ -2,11 +2,13 @@
 # Author: lingff (ling@stu.pku.edu.cn)
 # Description: EfficientNet V2 model.
 # Create: 2021-12-2
-
 import torch
 import torch.nn as nn
 from utils import get_efficientnetv2_params
 
+
+# CBAM Module
+# Not use, just for practice.
 class ChannelAttentionModule(nn.Module):
     def __init__(self, channels, reduction=16):
         super().__init__()
@@ -30,6 +32,8 @@ class ChannelAttentionModule(nn.Module):
         return inputs * y.view(b, c, 1, 1).expand_as(inputs)
 
 
+# CBAM Module
+# Not use, just for practice.
 class SpartialAttentionModule(nn.Module):
     def __init__(self, kernel_size=7):
         super().__init__()
@@ -114,20 +118,32 @@ class MBConvBlock(nn.Module):
         return x
 
 
-class FusedMBConvBlock(MBConvBlock):
+class FusedMBConvBlock(nn.Module):
     def __init__(self, block_arg):
-        super().__init__(block_arg)
+        super().__init__()
+        self._block_arg = block_arg
+        # fused conv
         inc = self._block_arg.input_filters
         outc = inc * self._block_arg.expand_ratio
         self._fused_conv = Conv2dAutoPadding(inc, outc, self._block_arg.kernel_size, self._block_arg.stride, bias=False)
         self._bn = nn.BatchNorm2d(outc)
+        # squeeze and extract
+        if self._block_arg.se_ratio:
+            self._se = SEModule(outc, self._block_arg.se_ratio)
+        # pw
+        inc = outc
+        outc = self._block_arg.output_filters
+        self._pw_conv = nn.Conv2d(inc, outc, 1, bias=False)
+        self._bn2 = nn.BatchNorm2d(outc)
+        # activation
+        self._swish = nn.SiLU()
 
     def forward(self, inputs):
         x = inputs
         x = self._swish(self._bn(self._fused_conv(inputs)))
         if self._block_arg.se_ratio:
             x = self._se(x)
-        x = self._bn2(self._pw_conv(x))
+        x = self._bn2(self._pw_conv(x))  # pw conv: linear activation
         if self._block_arg.input_filters == self._block_arg.output_filters and self._block_arg.stride == 1:
             x = x + inputs
         return x
@@ -138,13 +154,11 @@ class EfficientNetV2(nn.Module):
         super().__init__()
         self._blocks_args = blocks_args
         self._global_params = global_params
-
         # stem
         inc = 3
         outc = blocks_args[0].input_filters
         self._stem_conv = Conv2dAutoPadding(inc, outc, 3, 2)
         self._bn0 = nn.BatchNorm2d(outc)
-
         # blocks
         self._blocks = nn.ModuleList([]) # BUG: [] -> nn.ModuleList([])
         for block_arg in self._blocks_args:
@@ -155,19 +169,17 @@ class EfficientNetV2(nn.Module):
             for _ in range(block_arg.num_repeat - 1):
                 block = FusedMBConvBlock(block_arg) if block_arg.fused == True else MBConvBlock(block_arg)
                 self._blocks.append(block)
-
         # head
         inc = block_arg.output_filters
         outc = int(self._global_params.width_coefficient * 1280)
         self._head_conv = nn.Conv2d(inc, outc, 1, 1)
         self._bn1 = nn.BatchNorm2d(outc)
-
+        # top
         self._avg_pool = nn.AdaptiveAvgPool2d(1)
         self._dropout = nn.Dropout(self._global_params.dropout_rate) # missing dropout
         self._fc = nn.Linear(outc, self._global_params.num_classes)
-
         # activation
-        self._swish = nn.SiLU()  # ?
+        self._swish = nn.SiLU()  # hasattr?
 
 
     def forward(self, inputs):
