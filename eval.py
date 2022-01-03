@@ -28,20 +28,21 @@ def eval(model, val_loader, criterion, rank):
     top1 = AverageMeter()
 
     model.eval()
+    with torch.no_grad():
     # for epochs
-    for i, (images, targets) in enumerate(val_loader):
-        images = images.cuda(rank)
-        targets = targets.cuda(rank)
-        # predict
-        preds = model(images)
-        loss = criterion(preds, targets)
-        # acc
-        acc1 = accuracy(preds, targets)
-        losses.update(loss.item(), images.size(0))
-        top1.update(acc1, images.size(0))
+        for i, (images, targets) in enumerate(val_loader):
+            images = images.cuda(rank)
+            targets = targets.cuda(rank)
+            # predict
+            preds = model(images)
+            loss = criterion(preds, targets)
+            # acc
+            acc1 = accuracy(preds, targets)
+            losses.update(loss.item(), images.size(0))
+            top1.update(acc1[0].item(), images.size(0))
 
     print(f"[Test] >>>>>>>>>> Loss: {losses.avg:.3f}, Acc@1: {top1.avg:.3f}")
-    return top1.avg
+    return losses.avg, top1.avg
 
 
 def main():

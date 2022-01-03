@@ -5,7 +5,6 @@
 
 import re
 import collections
-import torch
 
 
 ################################################################################
@@ -198,14 +197,32 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
+# # Myself, not good
+# def accuracy(preds, targets):
+#     with torch.no_grad():
+#         batch_size = targets.size(0)
+#         pred_index = torch.argmax(preds, dim=1)
+#         correct = pred_index.eq(targets.view(1, -1))
+#         acc1 = correct.sum().float().mul_(100.0 / batch_size)
+#     return acc1
 
-def accuracy(preds, targets):
-    with torch.no_grad():
-        batch_size = targets.size(0)
-        pred_index = torch.argmax(preds, dim=1)
-        correct = pred_index.eq(targets.view(1, -1))
-        acc1 = correct.sum().float().mul_(100.0 / batch_size)
-    return acc1
+# good
+def accuracy(output, target, topk=(1,)):
+    """Computes the precision@k for the specified values of k"""
+    maxk = max(topk)
+    batch_size = target.size(0)
+
+    _, pred = output.topk(maxk, 1, True, True)
+    pred = pred.t()
+    correct = pred.eq(target.view(1, -1).expand_as(pred))
+
+    res = []
+    for k in topk:
+        correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+        res.append(correct_k.mul_(100.0 / batch_size))
+
+    return res
+
 
 if __name__ == '__main__':
     b, g = get_efficientnetv2_params("efficientnetv2-s", 10)

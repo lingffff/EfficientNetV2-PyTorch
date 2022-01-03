@@ -3,13 +3,16 @@
 # Description: For EfficientNet V2 training.
 # Create: 2021-12-2
 import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0, 3'
 import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
 import shutil
+import random
+import numpy as np
+from torch.utils.tensorboard import SummaryWriter
 
 from model import EfficientNetV2, get_efficientnetv2_params
 from eval import eval
@@ -25,13 +28,22 @@ parser.add_argument('dataset', type=str, default='cifar-10',
                     help='name of dataset')
 parser.add_argument('--resume', type=str, default='')
 parser.add_argument('--epochs', type=int, default=100)
-parser.add_argument('--batch_size', type=int, default=512)
+parser.add_argument('--batch_size', type=int, default=1024)
 parser.add_argument('--workers', type=int, default=16)
 parser.add_argument('--lr', type=float, default=0.1)
 parser.add_argument('--momentum', default=0.9, type=float)
 parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float)
 parser.add_argument('--ddp', action='store_true', 
                     help='Distributed Data Parallel Training on ONE server.')
+
+
+def set_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
+    np.random.seed(seed)  # Numpy module.
+    random.seed(seed)  # Python random module.
+    os.environ['PYTHONHASHSEED'] = str(seed)
 
 
 def ajust_learning_rate(optimizer, epoch, init_lr):
@@ -64,17 +76,20 @@ def train(model, train_loader, criterion, optimizer, rank):
         # acc
         acc1 = accuracy(preds, targets)
         losses.update(loss.item(), images.size(0))
-        top1.update(acc1, images.size(0))
+        top1.update(acc1[0].item(), images.size(0))
         # optimize
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         
     print(f"Train: Loss: {losses.avg:.3f}, Acc@1: {top1.avg:.3f}")
+    return losses.avg, top1.avg
 
 
 def main():
     args = parser.parse_args()
+    # lucky seed!
+    set_seed(42)
 
     if args.ddp:
         n_gpus = torch.cuda.device_count()
@@ -84,6 +99,7 @@ def main():
         main_worker(None, None, args)
 
 best_acc1 = 0.0
+writer = SummaryWriter('./runs')
 
 def main_worker(rank, world_size, args):
     global best_acc1
@@ -133,11 +149,18 @@ def main_worker(rank, world_size, args):
         if args.ddp:
             train_sampler.set_epoch(epoch)
         ajust_learning_rate(optimizer, epoch, args.lr)
-        train(model, train_loader, criterion, optimizer, rank)
-        acc1 = eval(model, val_loader, criterion, rank)
-        is_best = acc1 > best_acc1
+        train_loss, train_acc1 = train(model, train_loader, criterion, optimizer, rank)
+        val_loss, val_acc1 = eval(model, val_loader, criterion, rank)
+        
+        if not args.ddp or (args.ddp and rank == 0):
+            writer.add_scalar('Loss/train', train_loss, epoch)
+            writer.add_scalar('Loss/val', val_loss, epoch)
+            writer.add_scalar('Acc1/train', train_acc1, epoch)
+            writer.add_scalar('Acc1/val', val_acc1, epoch)
+
+        is_best = val_acc1 > best_acc1
         if is_best:
-            best_acc1 = acc1
+            best_acc1 = val_acc1
         if not args.ddp or (args.ddp and rank == 0):
             save_checkpoint({
                 'state_dict': model.state_dict(),
