@@ -5,6 +5,9 @@ The official TensorFlow implementation is at [google/automl/efficientnetv2](http
 ## Run
 ### 1. Train
 ```bash
+sh prepare.sh
+```
+```bash
 python train.py efficientnetv2-b0 cifar10
 ```
 if using Distributed Data Parallel Training:  

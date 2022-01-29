@@ -24,10 +24,10 @@ from datasets import *
 parser = argparse.ArgumentParser(description='Train EfficientNetV2.')
 parser.add_argument('model_name', type=str, default='efficientnetv2-b0', 
                     help='name of model')
-parser.add_argument('dataset', type=str, default='cifar-10', 
+parser.add_argument('dataset', type=str, default='cifar10', 
                     help='name of dataset')
 parser.add_argument('--resume', type=str, default='')
-parser.add_argument('--epochs', type=int, default=100)
+parser.add_argument('--epochs', type=int, default=120)
 parser.add_argument('--batch_size', type=int, default=1024)
 parser.add_argument('--workers', type=int, default=16)
 parser.add_argument('--lr', type=float, default=0.1)
@@ -103,7 +103,6 @@ writer = SummaryWriter('./runs')
 
 def main_worker(rank, world_size, args):
     global best_acc1
-    print(f"==> use GPU id (rank): {rank}")
     if args.ddp:
         os.environ['MASTER_ADDR'] = 'localhost'
         os.environ['MASTER_PORT'] = '12345'
@@ -113,13 +112,15 @@ def main_worker(rank, world_size, args):
     num_classes = get_num_classes(args.dataset)
     blocks_args, global_params = get_efficientnetv2_params(args.model_name, num_classes)
     model = EfficientNetV2(blocks_args, global_params)
-    model.cuda(rank)
     if args.ddp:
+        torch.cuda.set_device(rank)
+        model.cuda(rank)
         args.batch_size = int(args.batch_size / world_size)
         args.workers = int(args.workers / world_size)
-        print(f"==> use DDP for training.")
+        print(f"==> use GPU {rank} for DDP training.")
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[rank])
-    else:    
+    else:
+        model.cuda()
         if torch.cuda.device_count() > 1:
             print(f"==> use DP for training.")
             model = nn.DataParallel(model)
@@ -133,14 +134,14 @@ def main_worker(rank, world_size, args):
     if args.resume:
         if os.path.isfile(args.resume):
             print(f"=> loading checkpoint '{args.resume}'")
-            checkpoint = torch.load(args.resume)
+            checkpoint = torch.load(args.resume, map_location=torch.device('cpu'))
             model.load_state_dict(checkpoint['state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             start_epoch = checkpoint['epoch']
             best_acc1 = checkpoint['best_acc1']
-            if rank is not None:
+            # if rank is not None:
                 # best_acc1 may be from a checkpoint from a different GPU
-                best_acc1 = best_acc1.to(rank)
+                # best_acc1 = best_acc1.to(rank)
             print(f"=> start_epoch = {start_epoch}, best_acc1 = {best_acc1:.2f}")
         else:
             print(f"=> no checkpoint found at '{args.resume}'")
